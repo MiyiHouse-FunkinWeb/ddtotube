@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0f0f14">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon.svg">
+<title>DDTOTUBE</title>
+<style>
+:root{--bg:#0f0f14;--card:#1a1a24;--line:#2a2a3a;--tx:#f2f2f7;--mu:#9a9ab0;--ac:#ff3d6e;--ac2:#7c5cff;--ok:#2ecc71}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.45 system-ui,sans-serif;padding-bottom:70px}
+header{position:sticky;top:0;z-index:5;background:#0f0f14ee;backdrop-filter:blur(8px);display:flex;gap:8px;align-items:center;padding:10px 12px;border-bottom:1px solid var(--line)}
+.logo{font-weight:800;font-size:20px;letter-spacing:-.5px;background:linear-gradient(90deg,var(--ac),var(--ac2));-webkit-background-clip:text;color:transparent;cursor:pointer}
+header input{flex:1;min-width:0}
+input,textarea,select,button{font:inherit;color:var(--tx)}
+input,textarea,select{width:100%;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:4px 0}
+button{background:var(--ac);border:0;border-radius:10px;padding:10px 14px;font-weight:600;cursor:pointer}
+button.sec{background:var(--card);border:1px solid var(--line)}
+button.ok{background:var(--ok);color:#06210f}
+button:disabled{opacity:.5}
+nav{position:fixed;bottom:0;left:0;right:0;display:flex;background:#12121a;border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom)}
+nav a{flex:1;text-align:center;padding:10px 0;color:var(--mu);font-size:12px;text-decoration:none;cursor:pointer}
+nav a.on{color:var(--tx)} nav a b{display:block;font-size:20px}
+main{max-width:900px;margin:auto;padding:12px}
+.grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fill,minmax(250px,1fr))}
+.vc{background:var(--card);border-radius:14px;overflow:hidden;cursor:pointer}
+.th{aspect-ratio:16/9;background:linear-gradient(135deg,#252538,#171722);display:flex;align-items:center;justify-content:center;font-size:40px;position:relative}
+.th img,.th video{width:100%;height:100%;object-fit:cover}
+.vc .in{padding:10px}.vc h4{margin:0 0 4px;font-size:15px}
+.mu{color:var(--mu);font-size:13px}
+.tick{display:inline-block;background:var(--ac2);color:#fff;border-radius:50%;width:16px;height:16px;font-size:11px;line-height:16px;text-align:center;margin-left:4px;vertical-align:middle}
+.live{position:absolute;top:8px;left:8px;background:#e00;color:#fff;font-size:11px;font-weight:700;padding:2px 7px;border-radius:6px}
+.box{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:14px}
+video.player{width:100%;border-radius:12px;background:#000;max-height:60vh}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.chat{height:200px;overflow:auto;background:#0c0c12;border-radius:10px;padding:8px;font-size:13px}
+.chat div{margin-bottom:3px}.chat b{color:var(--ac)}
+.tabs{display:flex;gap:6px;margin-bottom:10px}.tabs button{flex:1}
+.tabs button.on{background:var(--ac2)}
+#toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:#fff;color:#000;padding:10px 16px;border-radius:20px;display:none;z-index:9;max-width:90%}
+canvas#pv{width:100%;border-radius:12px;background:#000}
+h2,h3{margin:6px 0 10px}
+</style>
+</head>
+<body>
+<header>
+  <span class="logo" onclick="go('home')">DDTOTUBE</span>
+  <input id="q" placeholder="Cari video…" onkeydown="if(event.key==='Enter')go('home',this.value)">
+</header>
+<main id="app"></main>
+<nav>
+  <a onclick="go('home')" id="n-home"><b>🏠</b>Beranda</a>
+  <a onclick="go('lives')" id="n-lives"><b>🔴</b>Live</a>
+  <a onclick="go('golive')" id="n-golive"><b>🎥</b>Mulai Live</a>
+  <a onclick="go('upload')" id="n-upload"><b>⬆️</b>Upload</a>
+  <a onclick="go('me')" id="n-me"><b>👤</b>Akun</a>
+</nav>
+<div id="toast"></div>
+
+<script>
+// ============ util ============
+const $=(s,r=document)=>r.querySelector(s), app=$('#app');
+let token=localStorage.tok||'', me=null;
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const toast=m=>{const t=$('#toast');t.textContent=m;t.style.display='block';clearTimeout(t._t);t._t=setTimeout(()=>t.style.display='none',3200)};
+async function api(url,opt={}){
+  opt.headers=Object.assign({},opt.headers,token?{Authorization:'Bearer '+token}:{});
+  if(opt.json){opt.body=JSON.stringify(opt.json);opt.headers['Content-Type']='application/json';opt.method=opt.method||'POST'}
+  const r=await fetch(url,opt),d=await r.json().catch(()=>({}));
+  if(!r.ok){const e=new Error(d.error||'Error');e.data=d;throw e}return d;
+}
+const tick=u=>u&&u.verified?'<span class="tick" title="Terverifikasi">✓</span>':'';
+const ago=t=>{const s=(Date.now()-t)/1000;return s<60?'baru saja':s<3600?Math.floor(s/60)+' mnt lalu':s<86400?Math.floor(s/3600)+' jam lalu':Math.floor(s/86400)+' hari lalu'};
+let ws,wsq=[];
+function wsConnect(){
+  return new Promise(res=>{
+    if(ws&&ws.readyState===1)return res(ws);
+    ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws');
+    ws.onopen=()=>{ws.send(JSON.stringify({type:'auth',token}));res(ws)};
+    ws.onmessage=e=>{const m=JSON.parse(e.data);wsHandlers.forEach(h=>h(m))};
+  });
+}
+const wsHandlers=new Set(), wsend=o=>ws&&ws.readyState===1&&ws.send(JSON.stringify(o));
+const ICE={iceServers:[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'}]};
+
+// ============ router ============
+let cleanup=null;
+async function go(page,arg){
+  if(cleanup){cleanup();cleanup=null}
+  document.querySelectorAll('nav a').forEach(a=>a.classList.remove('on'));
+  const n=$('#n-'+({watch:'home',profile:'home',watchlive:'lives'}[page]||page));n&&n.classList.add('on');
+  scrollTo(0,0);
+  try{await pages[page](arg)}catch(e){app.innerHTML='<div class="box">'+esc(e.message)+'</div>'}
+}
+async function loadMe(){ if(!token)return me=null; try{me=await api('/api/me')}catch{token='';localStorage.tok='';me=null} }
+
+const pages={};
+// ---- beranda ----
+pages.home=async(q='')=>{
+  const vids=await api('/api/videos?q='+encodeURIComponent(q));
+  app.innerHTML=(q?`<h3>Hasil: ${esc(q)}</h3>`:'')+(vids.length?'<div class="grid">'+vids.map(v=>`
+   <div class="vc" onclick="go('watch','${v.id}')"><div class="th">${v.thumb?`<img src="${v.thumb}" loading="lazy">`:`<video src="${v.video}#t=0.5" preload="metadata" muted></video>`}</div>
+   <div class="in"><h4>${esc(v.title)}</h4><div class="mu">${esc(v.author.username)}${tick(v.author)} · ${v.views}x ditonton · ${ago(v.created)}</div></div></div>`).join('')+'</div>'
+   :'<div class="box mu">Belum ada video. Jadilah yang pertama upload! ⬆️</div>');
+};
+// ---- tonton video ----
+pages.watch=async(vid)=>{
+  const v=await api('/api/videos/'+vid);
+  app.innerHTML=`<video class="player" src="${v.video}" controls autoplay playsinline ${v.thumb?`poster="${v.thumb}"`:''}></video>
+  <h3>${esc(v.title)}</h3>
+  <div class="row"><span class="mu">${v.views}x ditonton · ${ago(v.created)}</span><span style="flex:1"></span>
+   <button class="sec" id="lk">👍 ${v.likeCount}</button></div>
+  <div class="box row" style="margin-top:10px"><div style="flex:1;cursor:pointer" onclick="go('profile','${v.author.username}')"><b>${esc(v.author.username)}</b>${tick(v.author)}<div class="mu">${v.author.followers} pengikut</div></div><button id="fl">Ikuti</button></div>
+  <div class="box">${esc(v.desc||'(tanpa deskripsi)').replace(/\n/g,'<br>')}</div>
+  <h3>Komentar</h3><div class="row"><input id="ct" placeholder="Tulis komentar…"><button id="cs">Kirim</button></div>
+  <div id="cl">${v.comments.map(c=>`<div class="box"><b>${esc(c.user.username)}</b>${tick(c.user)} <span class="mu">${ago(c.t)}</span><div>${esc(c.text)}</div></div>`).reverse().join('')}</div>`;
+  $('#lk').onclick=async()=>{try{const r=await api(`/api/videos/${vid}/like`,{method:'POST'});$('#lk').textContent='👍 '+r.likeCount}catch(e){toast(e.message)}};
+  const prof=await api('/api/users/'+v.author.username);
+  const fb=$('#fl');fb.textContent=prof.following?'Mengikuti ✓':'Ikuti';
+  fb.onclick=async()=>{try{const r=await api(`/api/users/${v.author.username}/follow`,{method:'POST'});fb.textContent=r.following?'Mengikuti ✓':'Ikuti'}catch(e){toast(e.message)}};
+  $('#cs').onclick=async()=>{const t=$('#ct').value.trim();if(!t)return;try{await api(`/api/videos/${vid}/comments`,{json:{text:t}});go('watch',vid)}catch(e){toast(e.message)}};
+};
+// ---- profil ----
+pages.profile=async(name)=>{
+  const u=await api('/api/users/'+name), vids=await api('/api/videos?by='+name);
+  const left=Math.max(0,u.needed-u.followers);
+  app.innerHTML=`<div class="box"><h2>${esc(u.username)}${tick(u)}</h2><div class="mu">${u.followers} pengikut ${u.verified?'· Akun terverifikasi ✓':`· ${left} lagi untuk centang ✓`}</div>
+  <div style="margin-top:10px"><button id="fl">${u.following?'Mengikuti ✓':'Ikuti'}</button></div></div>
+  <div class="grid">${vids.map(v=>`<div class="vc" onclick="go('watch','${v.id}')"><div class="th">${v.thumb?`<img src="${v.thumb}">`:`<video src="${v.video}#t=0.5" preload="metadata" muted></video>`}</div><div class="in"><h4>${esc(v.title)}</h4><div class="mu">${v.views}x ditonton</div></div></div>`).join('')}</div>`;
+  $('#fl').onclick=async()=>{try{const r=await api(`/api/users/${name}/follow`,{method:'POST'});go('profile',name)}catch(e){toast(e.message)}};
+};
+// ---- akun ----
+pages.me=async()=>{
+  await loadMe();
+  if(!me){
+    app.innerHTML=`<div class="box"><div class="tabs"><button class="on" id="t1">Masuk</button><button class="sec" id="t2">Daftar</button></div>
+    <input id="u" placeholder="Username" autocapitalize="none"><input id="p" type="password" placeholder="Password (min 6)">
+    <button id="go" style="width:100%;margin-top:8px">Masuk</button></div>`;
+    let mode='login';
+    const setm=m=>{mode=m;$('#t1').className=m==='login'?'on':'sec';$('#t2').className=m==='reg'?'on':'sec';$('#go').textContent=m==='login'?'Masuk':'Daftar'};
+    $('#t1').onclick=()=>setm('login');$('#t2').onclick=()=>setm('reg');
+    $('#go').onclick=async()=>{try{const r=await api(mode==='login'?'/api/login':'/api/register',{json:{username:$('#u').value,password:$('#p').value}});token=r.token;localStorage.tok=token;toast('Berhasil!');go('me')}catch(e){toast(e.message)}};
+    return;
+  }
+  const left=Math.max(0,100-me.followers);
+  app.innerHTML=`<div class="box"><h2>${esc(me.username)}${tick(me)}</h2><div class="mu">${me.followers} pengikut · ${me.verified?'Terverifikasi ✓':left+' pengikut lagi untuk dapat centang ✓'}</div>
+   <div class="row" style="margin-top:10px"><button class="sec" onclick="go('profile','${me.username}')">Lihat channel</button><button class="sec" id="lo">Keluar</button></div></div>
+   <div class="box"><h3>📱 Verifikasi nomor HP</h3>
+   ${me.phoneVerified?'<div style="color:var(--ok)">✅ Nomor sudah terverifikasi — kamu bisa upload thumbnail.</div>':`
+   <div class="mu">Wajib untuk upload thumbnail custom.</div>
+   <input id="ph" type="tel" placeholder="08123456789"><button id="sc" style="width:100%">Kirim kode</button>
+   <div id="otpb" style="display:none"><input id="otp" inputmode="numeric" placeholder="Kode 6 digit"><button id="vc" class="ok" style="width:100%">Verifikasi</button></div>`}</div>`;
+  $('#lo').onclick=()=>{token='';localStorage.tok='';me=null;go('me')};
+  if(!me.phoneVerified){
+    $('#sc').onclick=async()=>{try{const r=await api('/api/phone/send',{json:{phone:$('#ph').value}});$('#otpb').style.display='block';toast(r.devCode?'MODE TES — kode kamu: '+r.devCode:'Kode dikirim ke HP kamu');if(r.devCode)$('#otp').value=r.devCode}catch(e){toast(e.message)}};
+    $('#vc').onclick=async()=>{try{await api('/api/phone/verify',{json:{code:$('#otp').value}});toast('Nomor terverifikasi ✅');go('me')}catch(e){toast(e.message)}};
+  }
+};
+// ---- upload ----
+pages.upload=async()=>{
+  await loadMe(); if(!me)return app.innerHTML='<div class="box">Login dulu di tab Akun.</div>';
+  app.innerHTML=`<div class="box"><h3>Upload video</h3>
+  <input id="ti" placeholder="Judul"><textarea id="de" rows="3" placeholder="Deskripsi"></textarea>
+  <div class="mu">Video</div><input id="vf" type="file" accept="video/*">
+  <div class="mu">Thumbnail ${me.phoneVerified?'(opsional)':'🔒 butuh verifikasi HP'}</div><input id="tf" type="file" accept="image/*" ${me.phoneVerified?'':'disabled'}>
+  ${me.phoneVerified?'':'<button class="sec" onclick="go(\'me\')" style="width:100%;margin:4px 0">Verifikasi nomor HP</button>'}
+  <progress id="pg" max="100" value="0" style="width:100%;display:none"></progress>
+  <button id="up" style="width:100%;margin-top:8px">Upload</button></div>`;
+  $('#up').onclick=()=>{
+    const fd=new FormData();fd.append('title',$('#ti').value);fd.append('desc',$('#de').value);
+    if(!$('#vf').files[0])return toast('Pilih video dulu');
+    fd.append('video',$('#vf').files[0]); if($('#tf').files[0])fd.append('thumbnail',$('#tf').files[0]);
+    const x=new XMLHttpRequest();x.open('POST','/api/videos');x.setRequestHeader('Authorization','Bearer '+token);
+    $('#pg').style.display='block';$('#up').disabled=true;
+    x.upload.onprogress=e=>$('#pg').value=e.loaded/e.total*100;
+    x.onload=()=>{$('#up').disabled=false;const d=JSON.parse(x.responseText||'{}');if(x.status===200){toast('Terupload!');go('watch',d.id)}else toast(d.error||'Gagal')};
+    x.onerror=()=>{$('#up').disabled=false;toast('Koneksi gagal')};x.send(fd);
+  };
+};
+// ---- daftar live ----
+pages.lives=async()=>{
+  const l=await api('/api/lives');
+  app.innerHTML='<h3>🔴 Sedang Live</h3>'+(l.length?'<div class="grid">'+l.map(s=>`<div class="vc" onclick="go('watchlive','${s.username}')"><div class="th">📺<span class="live">LIVE</span></div><div class="in"><h4>${esc(s.title)}</h4><div class="mu">${esc(s.username)}${tick(s)} · ${s.viewers} penonton</div></div></div>`).join('')+'</div>':'<div class="box mu">Belum ada yang live. Jadi yang pertama! 🎥</div>');
+};
+// ---- nonton live ----
+pages.watchlive=async(name)=>{
+  await loadMe();
+  app.innerHTML=`<div class="box"><b>🔴 ${esc(name)}</b> <span class="mu" id="st">menyambung…</span></div>
+  <video id="lv" class="player" autoplay playsinline controls></video>
+  <div class="box"><div class="chat" id="ch"></div><div class="row"><input id="ci" placeholder="${me?'Chat…':'Login untuk chat'}" style="flex:1"><button id="cb">Kirim</button></div></div>`;
+  let pc; await wsConnect();
+  const h=async m=>{
+    if(m.type==='offline'){$('#st').textContent='streamer tidak sedang live'}
+    if(m.type==='ended'){$('#st').textContent='live berakhir';pc&&pc.close()}
+    if(m.type==='chat'){$('#ch').insertAdjacentHTML('beforeend',`<div><b>${esc(m.user)}</b>${m.verified?'✓':''}: ${esc(m.text)}</div>`);$('#ch').scrollTop=1e9}
+    if(m.type==='offer'){
+      pc=new RTCPeerConnection(ICE);
+      pc.ontrack=e=>{$('#lv').srcObject=e.streams[0];$('#st').textContent='LIVE'};
+      pc.onicecandidate=e=>e.candidate&&wsend({type:'ice-to-broadcaster',candidate:e.candidate});
+      await pc.setRemoteDescription(m.sdp);const a=await pc.createAnswer();await pc.setLocalDescription(a);
+      wsend({type:'answer',sdp:pc.localDescription});
+    }
+    if(m.type==='ice-to-viewer'&&pc)pc.addIceCandidate(m.candidate).catch(()=>{});
+  };
+  wsHandlers.add(h);wsend({type:'watch',streamer:name});
+  $('#cb').onclick=()=>{const t=$('#ci').value.trim();if(t){wsend({type:'chat',text:t});$('#ci').value=''}};
+  cleanup=()=>{wsHandlers.delete(h);pc&&pc.close();ws&&ws.close()};
+};
+
+// ---- MULAI LIVE: kamera / layar / OBS (virtual cam) + PngTuber ----
+pages.golive=async()=>{
+  await loadMe(); if(!me)return app.innerHTML='<div class="box">Login dulu di tab Akun.</div>';
+  app.innerHTML=`<div class="box"><h3>🎥 Mulai Live</h3>
+  <input id="lt" placeholder="Judul live" value="Live ${esc(me.username)}">
+  <div class="mu" style="margin-top:6px">Sumber video (bisa digabung):</div>
+  <label class="row"><input type="checkbox" id="sScr" style="width:auto"> 🖥️ Screen live (bagikan layar HP/PC)</label>
+  <label class="row"><input type="checkbox" id="sCam" style="width:auto"> 📷 Kamera <span class="mu">(termasuk OBS Virtual Camera)</span></label>
+  <label class="row"><input type="checkbox" id="sPng" style="width:auto" checked> 🧑‍🎤 PngTuber / VTuber (bergerak mengikuti suara mic)</label>
+  <div id="pngopt"><div class="mu">Gambar PngTuber — mulut tertutup &amp; terbuka (PNG transparan). Kosongkan = avatar bawaan.</div>
+   <div class="row"><input type="file" id="img0" accept="image/*" style="flex:1"><input type="file" id="img1" accept="image/*" style="flex:1"></div></div>
+  <div class="row"><label class="mu">Posisi PngTuber</label><select id="pos" style="flex:1"><option value="br">Kanan bawah</option><option value="bl">Kiri bawah</option><option value="c">Tengah (besar)</option></select></div>
+  <div class="mu">🎤 Mic selalu dipakai untuk suara &amp; gerak mulut.</div></div>
+  <canvas id="pv" width="1280" height="720"></canvas>
+  <div class="row" style="margin:10px 0"><button id="start" style="flex:1">▶️ Mulai Live</button><button id="stop" class="sec" style="flex:1" disabled>⏹ Stop</button></div>
+  <div class="mu" id="info"></div>
+  <div class="box"><div class="chat" id="ch"></div><div class="row"><input id="ci" placeholder="Chat…" style="flex:1"><button id="cb">Kirim</button></div></div>`;
+  $('#sPng').onchange=()=>$('#pngopt').style.display=$('#sPng').checked?'block':'none';
+
+  let scr,cam,mic,actx,an,out,raf,pcs={},live=false,imgs=[null,null],data=new Uint8Array(256);
+  const vScr=document.createElement('video'),vCam=document.createElement('video');vScr.muted=vCam.muted=true;vScr.playsInline=vCam.playsInline=true;
+  const cv=$('#pv'),c=cv.getContext('2d');
+  const loadImg=(f,i)=>{if(!f)return imgs[i]=null;const im=new Image();im.onload=()=>imgs[i]=im;im.src=URL.createObjectURL(f)};
+  $('#img0').onchange=e=>loadImg(e.target.files[0],0);$('#img1').onchange=e=>loadImg(e.target.files[0],1);
+  let level=0,t0=0;
+  function draw(){
+    c.fillStyle='#0f0f14';c.fillRect(0,0,1280,720);
+    const fit=(v)=>{const r=Math.min(1280/v.videoWidth,720/v.videoHeight),w=v.videoWidth*r,h=v.videoHeight*r;c.drawImage(v,(1280-w)/2,(720-h)/2,w,h)};
+    if(scr&&vScr.videoWidth)fit(vScr);
+    if(cam&&vCam.videoWidth){ if(scr){c.drawImage(vCam,20,20,320,180)} else fit(vCam) }
+    if(an){an.getByteTimeDomainData(data);let s=0;for(const v of data)s+=Math.abs(v-128);level=level*.6+(s/data.length/128*6)*.4}
+    if($('#sPng').checked)drawTuber();
+    raf=requestAnimationFrame(draw);
+  }
+  function drawTuber(){
+    const talk=level>.08, pos=$('#pos').value, big=pos==='c', S=big?560:300, t=performance.now()/1000;
+    const bob=talk?Math.sin(t*14)*6*Math.min(level*3,1):Math.sin(t*2)*3;
+    const x=pos==='bl'?30:pos==='c'?(1280-S)/2:1280-S-30, y=720-S-20+bob;
+    const im=imgs[talk&&imgs[1]?1:0]||imgs[0];
+    if(im){const r=Math.min(S/im.width,S/im.height);c.drawImage(im,x+(S-im.width*r)/2,y+(S-im.height*r),im.width*r,im.height*r);return}
+    // avatar bawaan
+    const cx=x+S/2,cy=y+S/2+20,R=S*.38;
+    c.fillStyle='#ffd7a8';c.beginPath();c.arc(cx,cy,R,0,7);c.fill();
+    c.fillStyle='#ff3d6e';c.beginPath();c.arc(cx,cy-R*.35,R*1.02,Math.PI,0);c.fill();
+    c.fillStyle='#222';const blink=(t%4)<.15;
+    [-1,1].forEach(d=>{c.beginPath();c.ellipse(cx+d*R*.38,cy-R*.05,R*.09,blink?2:R*.13,0,0,7);c.fill()});
+    c.fillStyle='#7a1f2b';c.beginPath();c.ellipse(cx,cy+R*.45,R*.2,talk?Math.min(R*.05+level*R*.6,R*.3):R*.03,0,0,7);c.fill();
+  }
+  async function getMedia(){
+    mic=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}});
+    actx=new (window.AudioContext||window.webkitAudioContext)();const src=actx.createMediaStreamSource(mic);an=actx.createAnalyser();an.fftSize=256;src.connect(an);
+    const tracks=[mic.getAudioTracks()[0]];
+    if($('#sScr').checked){
+      if(!navigator.mediaDevices.getDisplayMedia)throw new Error('Browser HP kamu belum mendukung share layar. Pakai Chrome terbaru (Android) atau PC.');
+      scr=await navigator.mediaDevices.getDisplayMedia({video:true,audio:true});vScr.srcObject=scr;await vScr.play();
+      if(scr.getAudioTracks()[0]){ // gabung suara layar + mic
+        const d=actx.createMediaStreamDestination();src.connect(d);actx.createMediaStreamSource(new MediaStream([scr.getAudioTracks()[0]])).connect(d);tracks[0]=d.stream.getAudioTracks()[0];
+      }
+      scr.getVideoTracks()[0].onended=()=>$('#stop').click();
+    }
+    if($('#sCam').checked){cam=await navigator.mediaDevices.getUserMedia({video:{width:1280,height:720}});vCam.srcObject=cam;await vCam.play()}
+    out=new MediaStream([cv.captureStream(30).getVideoTracks()[0],...tracks]);
+  }
+  async function newViewer(id){
+    const pc=new RTCPeerConnection(ICE);pcs[id]=pc;
+    out.getTracks().forEach(t=>pc.addTrack(t,out));
+    pc.onicecandidate=e=>e.candidate&&wsend({type:'ice-to-viewer',to:id,candidate:e.candidate});
+    // batasi bitrate agar lancar di HP
+    const o=await pc.createOffer();await pc.setLocalDescription(o);wsend({type:'offer',to:id,sdp:pc.localDescription});
+    pc.getSenders().forEach(s=>{if(s.track&&s.track.kind==='video'){const p=s.getParameters();p.encodings=[{maxBitrate:1800000}];s.setParameters(p).catch(()=>{})}});
+  }
+  const h=async m=>{
+    if(m.type==='viewer-join'){newViewer(m.viewer);$('#info').textContent='🔴 LIVE · '+m.count+' penonton'}
+    if(m.type==='viewer-left'){pcs[m.viewer]&&pcs[m.viewer].close();delete pcs[m.viewer];$('#info').textContent='🔴 LIVE · '+m.count+' penonton'}
+    if(m.type==='answer'&&pcs[m.from])pcs[m.from].setRemoteDescription(m.sdp);
+    if(m.type==='ice-to-broadcaster'&&pcs[m.from])pcs[m.from].addIceCandidate(m.candidate).catch(()=>{});
+    if(m.type==='chat'){$('#ch').insertAdjacentHTML('beforeend',`<div><b>${esc(m.user)}</b>${m.verified?'✓':''}: ${esc(m.text)}</div>`);$('#ch').scrollTop=1e9}
+    if(m.type==='live-started'){live=true;$('#info').textContent='🔴 LIVE! Bagikan: '+location.origin+' → tab Live'}
+  };
+  function stopAll(){
+    cancelAnimationFrame(raf);[scr,cam,mic,out].forEach(s=>s&&s.getTracks().forEach(t=>t.stop()));
+    Object.values(pcs).forEach(p=>p.close());pcs={};actx&&actx.close().catch(()=>{});scr=cam=mic=out=actx=an=null;
+    if(live)wsend({type:'end-live'});live=false;
+  }
+  $('#start').onclick=async()=>{
+    try{
+      if(!$('#sScr').checked&&!$('#sCam').checked&&!$('#sPng').checked)return toast('Pilih minimal satu sumber');
+      $('#start').disabled=true;await getMedia();draw();await wsConnect();wsHandlers.add(h);
+      wsend({type:'go-live',title:$('#lt').value});$('#stop').disabled=false;
+    }catch(e){toast(e.message||'Izin ditolak');stopAll();$('#start').disabled=false}
+  };
+  $('#stop').onclick=()=>{stopAll();$('#start').disabled=false;$('#stop').disabled=true;$('#info').textContent='Live selesai.'};
+  $('#cb').onclick=()=>{const t=$('#ci').value.trim();if(t){wsend({type:'chat',text:t});$('#ci').value=''}};
+  // preview PngTuber tanpa mic sebelum mulai
+  draw();
+  cleanup=()=>{stopAll();wsHandlers.delete(h);ws&&ws.close()};
+};
+
+if('serviceWorker'in navigator)navigator.serviceWorker.register('/sw.js');
+loadMe().then(()=>go('home'));
+</script>
+</body>
+</html>
